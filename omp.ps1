@@ -106,7 +106,8 @@ function Show-Menu {
     Write-Host "3. Install Nerd Font"
     Write-Host "4. Uninstall Nerd Font"
     Write-Host "5. Customize Windows Terminal"
-    Write-Host "6. Exit"
+    Write-Host "==============================="
+    Write-Host "0. Exit"
     Write-Host "==============================="
 }
 
@@ -130,14 +131,27 @@ do {
         "5" {
             $font = Read-Host "Enter font for Windows Terminal (default: FiraCode Nerd Font)"
             if ([string]::IsNullOrWhiteSpace($font)) { $font = "FiraCode Nerd Font" }
-            $opacity = Read-Host "Enter opacity (0.0 - 1.0, default: 0.8)"
-            if ([string]::IsNullOrWhiteSpace($opacity)) { $opacity = 0.8 }
-            Customize-Terminal -Font $font -Opacity [double]$opacity
+
+            $opacityInput = Read-Host "Enter opacity (0.0 - 1.0, default: 0.8)"
+            if ([string]::IsNullOrWhiteSpace($opacityInput)) {
+                $opacity = 0.8
+            }
+            else {
+                try {
+                    $opacity = [double]::Parse($opacityInput)
+                }
+                catch {
+                    Write-Host "⚠️ Invalid input, using default 0.8"
+                    $opacity = 0.8
+                }
+            }
+
+            Customize-Terminal -Font $font -Opacity $opacity
         }
-        "6" { Write-Host "👋 Exiting..."; break }
+        "0" { Write-Host "👋 Exiting..."; break }
         default { Write-Host "❌ Invalid choice, try again." }
     }
 
     Pause
-} while ($choice -ne "6")
+} while ($choice -ne "0")
 # End of script
