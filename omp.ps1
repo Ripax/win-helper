@@ -129,127 +129,24 @@ function Uninstall-NerdFont {
     Write-Host "✅ Nerd Font removed: $FontName"
 }
 
-function Customize-Terminal {
+# New: show manual terminal configuration instructions instead of auto-editing settings.json
+function Show-TerminalInstructions {
     param(
-        [string]$Font = "FiraCode Nerd Font",
+        [string]$FontFace = "FiraCode Nerd Font",
         [double]$Opacity = 0.8,
-        [string]$ColorSchemeName = "Material Dark"
+        [string]$ColorScheme = "Material Dark"
     )
 
-    $settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
-    if (-not (Test-Path $settingsPath)) {
-        Write-Host "⚠️ Windows Terminal settings.json not found."
-        return
-    }
-
-    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-
-    # Ensure schemes array exists
-    if (-not $settings.PSObject.Properties.Name.Contains("schemes")) {
-        $settings | Add-Member -MemberType NoteProperty -Name "schemes" -Value @()
-    }
-
-    # Add a simple Material Dark scheme if missing
-    $exists = $false
-    foreach ($s in $settings.schemes) {
-        if ($s.name -eq $ColorSchemeName) { $exists = $true; break }
-    }
-    if (-not $exists) {
-        $mdScheme = @{
-            name = $ColorSchemeName
-            background = "#263238"
-            foreground = "#ECEFF1"
-            black = "#263238"
-            red = "#ff5370"
-            green = "#c3e88d"
-            yellow = "#ffcb6b"
-            blue = "#82aaff"
-            purple = "#c792ea"
-            cyan = "#89ddff"
-            white = "#eceff1"
-            brightBlack = "#546e7a"
-            brightRed = "#ff8ba7"
-            brightGreen = "#e6ffcb"
-            brightYellow = "#ffe082"
-            brightBlue = "#b3d4ff"
-            brightPurple = "#e6ccff"
-            brightCyan = "#d6fbff"
-            brightWhite = "#ffffff"
-        }
-        $settings.schemes += $mdScheme
-    }
-
-    foreach ($profile in $settings.profiles.list) {
-        if (-not $profile.PSObject.Properties.Name.Contains("font")) {
-            $profile | Add-Member -MemberType NoteProperty -Name "font" -Value @{}
-        }
-        $profile.font.face = $Font
-
-        if (-not $profile.PSObject.Properties.Name.Contains("useAcrylic")) {
-            $profile | Add-Member -MemberType NoteProperty -Name "useAcrylic" -Value $true
-        } else {
-            $profile.useAcrylic = $true
-        }
-
-        if (-not $profile.PSObject.Properties.Name.Contains("acrylicOpacity")) {
-            $profile | Add-Member -MemberType NoteProperty -Name "acrylicOpacity" -Value $Opacity
-        } else {
-            $profile.acrylicOpacity = $Opacity
-        }
-
-        # Set color scheme
-        $profile.colorScheme = $ColorSchemeName
-    }
-
-    $settings | ConvertTo-Json -Depth 20 | Set-Content $settingsPath -Encoding utf8
-    Write-Host "✨ Windows Terminal customized with font '$Font', opacity $Opacity and color scheme '$ColorSchemeName'"
-}
-
-function Reset-TerminalCustomization {
-    param(
-        [string]$DefaultFont = "Consolas",
-        [string]$ColorSchemeToRemove = "Material Dark"
-    )
-
-    $settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
-    if (-not (Test-Path $settingsPath)) {
-        Write-Host "⚠️ Windows Terminal settings.json not found."
-        return
-    }
-
-    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-
-    foreach ($profile in $settings.profiles.list) {
-        if ($profile.PSObject.Properties.Name.Contains("font")) {
-            $profile.font.face = $DefaultFont
-        } else {
-            $profile | Add-Member -MemberType NoteProperty -Name "font" -Value @{ face = $DefaultFont }
-        }
-
-        if ($profile.PSObject.Properties.Name.Contains("useAcrylic")) {
-            $profile.useAcrylic = $false
-        }
-        if ($profile.PSObject.Properties.Name.Contains("acrylicOpacity")) {
-            $profile.acrylicOpacity = 1.0
-        }
-        if ($profile.PSObject.Properties.Name.Contains("colorScheme") -and $profile.colorScheme -eq $ColorSchemeToRemove) {
-            $profile.PSObject.Properties.Remove("colorScheme")
-        }
-    }
-
-    # Remove the Material Dark scheme if present
-    if ($settings.PSObject.Properties.Name.Contains("schemes")) {
-        $newSchemes = @()
-        foreach ($s in $settings.schemes) {
-            if ($s.name -ne $ColorSchemeToRemove) {
-                $newSchemes += $s
-            }
-        }
-        $settings.schemes = $newSchemes
-    }
-
-    $settings | ConvertTo-Json -Depth 20 | Set-Content $settingsPath -Encoding utf8
-    Write-Host "♻️ Windows Terminal customization reset (font -> $DefaultFont, removed scheme '$ColorSchemeToRemove' if present)."
+    Write-Host "✨ Manual Windows Terminal configuration:"
+    Write-Host "1) Open Windows Terminal settings (Ctrl+,) or Settings UI."
+    Write-Host "2) For each profile, set the font face to: $FontFace"
+    Write-Host "   - In Settings UI: Profile → Appearance → Font face"
+    Write-Host "3) Enable 'Use acrylic' (Use Acrylic) and set opacity to: $Opacity"
+    Write-Host "   - In Settings UI: Profile → Appearance → Use acrylic / Acrylic opacity"
+    Write-Host "4) Add or pick a color scheme named '$ColorScheme' if you want that theme."
+    Write-Host "5) Save and restart Windows Terminal for changes to take effect."
+    Write-Host ""
+    Write-Host "If you prefer automation later, re-run this script after adding safe JSON edits."
 }
 
 function Show-Menu {
@@ -257,13 +154,12 @@ function Show-Menu {
     Write-Host "==============================="
     Write-Host " Oh My Posh Setup Menu"
     Write-Host "==============================="
-    Write-Host "1. Install (oh-my-posh, nerd fonts, customize terminal -> Material Dark + opacity)"
-    Write-Host "2. Uninstall (oh-my-posh, remove nerd fonts, reset terminal customization)"
+    Write-Host "1. Install (oh-my-posh, nerd fonts) and show manual terminal config steps"
+    Write-Host "2. Uninstall (oh-my-posh, remove nerd fonts) and show manual revert steps"
     Write-Host "==============================="
     Write-Host "0. Exit"
     Write-Host "==============================="
 }
-# ...existing code...
 
 do {
     Show-Menu
@@ -283,7 +179,9 @@ do {
 
             Install-OhMyPosh
             Install-NerdFont -FontName $font
-            Customize-Terminal -Font $fontFace -Opacity $opacity -ColorSchemeName "Material Dark"
+
+            # Show manual instructions instead of editing settings.json automatically
+            Show-TerminalInstructions -FontFace $fontFace -Opacity $opacity -ColorScheme "Material Dark"
         }
         "2" {
             $font = Read-Host "Enter Nerd Font name to remove (default: FiraCode)"
@@ -291,7 +189,10 @@ do {
 
             Uninstall-OhMyPosh
             Uninstall-NerdFont -FontName $font
-            Reset-TerminalCustomization -DefaultFont "Consolas" -ColorSchemeToRemove "Material Dark"
+
+            Write-Host ""
+            Write-Host "⚠️ Terminal settings were not modified by this script."
+            Write-Host "If you manually changed Windows Terminal settings, open Settings and revert font to your preferred font (e.g., Consolas)."
         }
         "0" { Write-Host "👋 Exiting..."; break }
         default { Write-Host "❌ Invalid choice, try again." }
