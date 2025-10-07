@@ -1,150 +1,143 @@
-# --- Full Automatic Oh My Posh + Nerd Font + Windows Terminal Setup (Smart Font Check) ---
-# Save this as setup-omp.ps1 and run in PowerShell (Run as Admin)
+# Oh My Posh + Nerd Fonts + Windows Terminal Customizer
+# Save this file as oh-my-posh-setup.ps1
+# Run in ADMIN PowerShell:  Set-ExecutionPolicy Bypass -Scope Process -Force; ./oh-my-posh-setup.ps1
 
-# 1. Install Oh My Posh if not installed
-if (-not (Get-Command "oh-my-posh.exe" -ErrorAction SilentlyContinue)) {
-    Write-Host "📦 Installing Oh My Posh..."
-    winget install JanDeDobbeleer.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements -h
-} else {
-    Write-Host "✅ Oh My Posh already installed."
+function Install-OhMyPosh {
+    Write-Host "🚀 Installing Oh My Posh..."
+    winget install JanDeDobbeleer.OhMyPosh -s winget -e --accept-source-agreements --accept-package-agreements
+    Write-Host "✅ Oh My Posh installed."
 }
 
-# 2. Choose Nerd Font
-$fontsList = @{
-    "1" = "CascadiaCode"
-    "2" = "FiraCode"
-    "3" = "Hack"
-    "4" = "JetBrainsMono"
+function Uninstall-OhMyPosh {
+    Write-Host "🗑️ Uninstalling Oh My Posh..."
+    winget uninstall JanDeDobbeleer.OhMyPosh -s winget
+    Write-Host "✅ Oh My Posh removed."
 }
 
-Write-Host "`n🎨 Choose a Nerd Font to install:"
-$fontsList.GetEnumerator() | ForEach-Object { Write-Host "$($_.Key). $($_.Value)" }
+function Install-NerdFont {
+    param([string]$FontName = "FiraCode")
 
-$choice = Read-Host "Enter number [1-4]"
-if ($fontsList.ContainsKey($choice)) {
-    $fontName = $fontsList[$choice]
+    Write-Host "🔤 Installing Nerd Font ($FontName)..."
+    $url = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/$FontName.zip"
+    $zipPath = "$env:TEMP\$FontName.zip"
+    $extractPath = "$env:TEMP\$FontName"
 
-    # Check if font already installed
-    $installedFonts = @(Get-ChildItem "$env:WINDIR\Fonts" -Include "*.ttf","*.otf" -Recurse | Select-Object -ExpandProperty BaseName)
-    if ($installedFonts -match "$fontName") {
-        Write-Host "ℹ️ $fontName Nerd Font already installed. Skipping download."
-    } else {
-        Write-Host "📦 Installing $fontName Nerd Font..."
-        $fontUrl = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/$fontName.zip"
-        $fontZip = "$env:TEMP\$fontName.zip"
-        $fontDir = "$env:TEMP\$fontName-NF"
+    Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+    Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
 
-        Invoke-WebRequest -Uri $fontUrl -OutFile $fontZip
-        Expand-Archive -Path $fontZip -DestinationPath $fontDir -Force
+    # Copy fonts into Windows Fonts (requires admin)
+    $fonts = Get-ChildItem -Path $extractPath -Recurse -Include *.ttf,*.otf
+    foreach ($font in $fonts) {
+        Write-Host "📥 Installing font: $($font.Name)"
+        $target = "$env:WINDIR\Fonts\$($font.Name)"
+        Copy-Item $font.FullName -Destination $target -Force
+        # Register font
+        $shellApp = New-Object -ComObject Shell.Application
+        $fontsFolder = $shellApp.Namespace(0x14)
+        $fontsFolder.CopyHere($font.FullName, 0x10)
+    }
 
-        $fonts = Get-ChildItem -Path $fontDir -Recurse -Include *.ttf
-        foreach ($font in $fonts) {
-            Copy-Item $font.FullName -Destination "$env:WINDIR\Fonts" -Force
-            Write-Host "✅ Installed font: $($font.Name)"
+    Remove-Item $zipPath -Force
+    Remove-Item $extractPath -Recurse -Force
+    Write-Host "✅ Nerd Font installed: $FontName"
+}
+
+function Uninstall-NerdFont {
+    param([string]$FontName = "FiraCode")
+
+    Write-Host "🗑️ Removing Nerd Font ($FontName)..."
+    $fontDir = "$env:WINDIR\Fonts"
+    $fonts = Get-ChildItem $fontDir | Where-Object { $_.Name -like "*$FontName Nerd Font*" }
+
+    foreach ($font in $fonts) {
+        Write-Host "❌ Deleting: $($font.Name)"
+        Remove-Item $font.FullName -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Host "✅ Nerd Font removed: $FontName"
+}
+
+function Customize-Terminal {
+    param(
+        [string]$Font = "FiraCode Nerd Font",
+        [double]$Opacity = 0.8
+    )
+
+    $settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+    if (-not (Test-Path $settingsPath)) {
+        Write-Host "⚠️ Windows Terminal settings.json not found."
+        return
+    }
+
+    $settings = Get-Content $settingsPath | Out-String | ConvertFrom-Json
+
+    foreach ($profile in $settings.profiles.list) {
+        # Ensure font object exists
+        if (-not $profile.PSObject.Properties.Name.Contains("font")) {
+            $profile | Add-Member -MemberType NoteProperty -Name "font" -Value @{}
         }
-    }
-} else {
-    Write-Host "❌ Invalid choice. Exiting."
-    exit
-}
+        $profile.font.face = $Font
 
-# 3. Export Oh My Posh theme
-$themePath = "$HOME\Documents\PowerShell\material.omp.json"
-oh-my-posh config export --config jandedobbeleer --output $themePath
-
-# 4. Ensure PowerShell profile exists
-if (!(Test-Path -Path $PROFILE)) {
-    New-Item -ItemType File -Path $PROFILE -Force | Out-Null
-}
-
-# 5. Add init line to profile
-$initLine = 'oh-my-posh init pwsh --config "$HOME\Documents\PowerShell\material.omp.json" | Invoke-Expression'
-if (-not (Select-String -Path $PROFILE -Pattern 'oh-my-posh init pwsh' -Quiet)) {
-    Add-Content -Path $PROFILE -Value "`n$initLine"
-    Write-Host "✅ Oh My Posh init added to PowerShell profile."
-} else {
-    Write-Host "ℹ️ Oh My Posh already configured in PowerShell profile."
-}
-
-# 6. Color Schemes Library
-$colorSchemes = @{
-    "1" = "Dracula"
-    "2" = "One Half Dark"
-    "3" = "Solarized Dark"
-    "4" = "Gruvbox Dark"
-}
-
-$schemeDefs = @{
-    "Dracula" = @{
-        name="Dracula"; cursorColor="#F8F8F2"; selectionBackground="#44475A"; background="#282A36"; foreground="#F8F8F2";
-        black="#21222C"; blue="#BD93F9"; cyan="#8BE9FD"; green="#50FA7B"; purple="#FF79C6"; red="#FF5555"; white="#F8F8F2"; yellow="#F1FA8C";
-        brightBlack="#6272A4"; brightBlue="#D6ACFF"; brightCyan="#A4FFFF"; brightGreen="#69FF94"; brightPurple="#FF92DF"; brightRed="#FF6E6E"; brightWhite="#FFFFFF"; brightYellow="#FFFFA5"
-    }
-    "One Half Dark" = @{
-        name="One Half Dark"; background="#282C34"; foreground="#DCDFE4"; cursorColor="#FFFFFF"; selectionBackground="#FFFFFF";
-        black="#282C34"; red="#E06C75"; green="#98C379"; yellow="#E5C07B"; blue="#61AFEF"; purple="#C678DD"; cyan="#56B6C2"; white="#DCDFE4";
-        brightBlack="#5A6374"; brightRed="#E06C75"; brightGreen="#98C379"; brightYellow="#E5C07B"; brightBlue="#61AFEF"; brightPurple="#C678DD"; brightCyan="#56B6C2"; brightWhite="#FFFFFF"
-    }
-    "Solarized Dark" = @{
-        name="Solarized Dark"; background="#002B36"; foreground="#839496"; cursorColor="#93A1A1"; selectionBackground="#073642";
-        black="#073642"; red="#DC322F"; green="#859900"; yellow="#B58900"; blue="#268BD2"; purple="#D33682"; cyan="#2AA198"; white="#EEE8D5";
-        brightBlack="#002B36"; brightRed="#CB4B16"; brightGreen="#586E75"; brightYellow="#657B83"; brightBlue="#839496"; brightPurple="#6C71C4"; brightCyan="#93A1A1"; brightWhite="#FDF6E3"
-    }
-    "Gruvbox Dark" = @{
-        name="Gruvbox Dark"; background="#282828"; foreground="#EBDBB2"; cursorColor="#FE8019"; selectionBackground="#3C3836";
-        black="#282828"; red="#CC241D"; green="#98971A"; yellow="#D79921"; blue="#458588"; purple="#B16286"; cyan="#689D6A"; white="#A89984";
-        brightBlack="#928374"; brightRed="#FB4934"; brightGreen="#B8BB26"; brightYellow="#FABD2F"; brightBlue="#83A598"; brightPurple="#D3869B"; brightCyan="#8EC07C"; brightWhite="#EBDBB2"
-    }
-}
-
-# 7. Choose color scheme
-Write-Host "`n🎨 Choose a color scheme for Windows Terminal:"
-$colorSchemes.GetEnumerator() | ForEach-Object { Write-Host "$($_.Key). $($_.Value)" }
-$schemeChoice = Read-Host "Enter number [1-4]"
-if ($colorSchemes.ContainsKey($schemeChoice)) {
-    $schemeName = $colorSchemes[$schemeChoice]
-    Write-Host "🎨 Applying $schemeName color scheme..."
-} else {
-    Write-Host "❌ Invalid choice. Using Dracula as default."
-    $schemeName = "Dracula"
-}
-
-# 8. Ask for custom acrylic opacity
-$opacityInput = Read-Host "Enter acrylic opacity (0.0 - 1.0, e.g., 0.5 or 0.85)"
-if ([double]::TryParse($opacityInput,[ref]$null) -and $opacityInput -ge 0 -and $opacityInput -le 1) {
-    $opacity = [double]$opacityInput
-} else {
-    Write-Host "❌ Invalid input. Using default opacity 0.85"
-    $opacity = 0.85
-}
-
-# 9. Apply to Windows Terminal
-$settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
-if (Test-Path $settingsPath) {
-    $json = Get-Content $settingsPath -Raw | ConvertFrom-Json
-
-    # Add color scheme if missing
-    if (-not ($json.schemes | Where-Object { $_.name -eq $schemeName })) {
-        $json.schemes += $schemeDefs[$schemeName]
-        Write-Host "✅ Added $schemeName scheme to Windows Terminal."
-    }
-
-    # Apply to PowerShell profile
-    foreach ($profile in $json.profiles.list) {
-        if ($profile.name -match "PowerShell") {
-            $profile.fontFace = "$fontName Nerd Font"
-            $profile.colorScheme = $schemeName
+        # Ensure acrylic + opacity
+        if (-not $profile.PSObject.Properties.Name.Contains("useAcrylic")) {
+            $profile | Add-Member -MemberType NoteProperty -Name "useAcrylic" -Value $true
+        } else {
             $profile.useAcrylic = $true
-            $profile.acrylicOpacity = $opacity
-            $profile.cursorShape = "bar"
+        }
+
+        if (-not $profile.PSObject.Properties.Name.Contains("acrylicOpacity")) {
+            $profile | Add-Member -MemberType NoteProperty -Name "acrylicOpacity" -Value $Opacity
+        } else {
+            $profile.acrylicOpacity = $Opacity
         }
     }
 
-    $json | ConvertTo-Json -Depth 5 | Set-Content -Path $settingsPath -Encoding utf8
-    Write-Host "✅ Windows Terminal customized with $fontName Nerd Font + $schemeName + acrylic opacity $opacity."
-} else {
-    Write-Host "⚠️ Windows Terminal settings.json not found. Please configure manually."
+    $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath -Encoding utf8
+    Write-Host "✨ Windows Terminal customized with $Font and opacity $Opacity"
 }
 
-Write-Host "`n🎉 Setup complete!"
-Write-Host "👉 Restart PowerShell + Windows Terminal to see your new look."
+function Show-Menu {
+    Clear-Host
+    Write-Host "==============================="
+    Write-Host " Oh My Posh Setup Menu"
+    Write-Host "==============================="
+    Write-Host "1. Install Oh My Posh"
+    Write-Host "2. Uninstall Oh My Posh"
+    Write-Host "3. Install Nerd Font"
+    Write-Host "4. Uninstall Nerd Font"
+    Write-Host "5. Customize Windows Terminal"
+    Write-Host "6. Exit"
+    Write-Host "==============================="
+}
+
+do {
+    Show-Menu
+    $choice = Read-Host "Select an option (1-6)"
+
+    switch ($choice) {
+        "1" { Install-OhMyPosh }
+        "2" { Uninstall-OhMyPosh }
+        "3" {
+            $font = Read-Host "Enter Nerd Font name (default: FiraCode)"
+            if ([string]::IsNullOrWhiteSpace($font)) { $font = "FiraCode" }
+            Install-NerdFont -FontName $font
+        }
+        "4" {
+            $font = Read-Host "Enter Nerd Font name to remove (default: FiraCode)"
+            if ([string]::IsNullOrWhiteSpace($font)) { $font = "FiraCode" }
+            Uninstall-NerdFont -FontName $font
+        }
+        "5" {
+            $font = Read-Host "Enter font for Windows Terminal (default: FiraCode Nerd Font)"
+            if ([string]::IsNullOrWhiteSpace($font)) { $font = "FiraCode Nerd Font" }
+            $opacity = Read-Host "Enter opacity (0.0 - 1.0, default: 0.8)"
+            if ([string]::IsNullOrWhiteSpace($opacity)) { $opacity = 0.8 }
+            Customize-Terminal -Font $font -Opacity [double]$opacity
+        }
+        "6" { Write-Host "👋 Exiting..."; break }
+        default { Write-Host "❌ Invalid choice, try again." }
+    }
+
+    Pause
+} while ($choice -ne "6")
+# End of script
