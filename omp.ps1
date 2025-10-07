@@ -102,7 +102,101 @@ function Show-Menu {
     Write-Host " Oh My Posh Setup Menu"
     Write-Host "==============================="
     Write-Host "1. Install Oh My Posh"
-    Write-Host "2. Uninstall Oh My Posh"
+    Write-Host "2. Uninstall Oh My Posh"    // ...existing code...
+    function Install-OhMyPosh {
+        Write-Host "🚀 Installing Oh My Posh..."
+    
+        # Quick check: is the command already available?
+        if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+            Write-Host "✅ Oh My Posh is already installed. Skipping."
+            return
+        }
+    
+        # Fallback check via winget (in case binary name differs)
+        try {
+            $wingetList = & winget list --id JanDeDobbeleer.OhMyPosh 2>$null
+            if ($wingetList -and $wingetList -ne "") {
+                Write-Host "✅ Oh My Posh is already installed (winget). Skipping."
+                return
+            }
+        } catch { 
+            # ignore winget errors, proceed to install attempt
+        }
+    
+        winget install JanDeDobbeleer.OhMyPosh -s winget -e --accept-source-agreements --accept-package-agreements
+        Write-Host "✅ Oh My Posh installed."
+    }
+    
+    # Helper to detect installed fonts
+    function Test-FontInstalled {
+        param([string]$FontName)
+    
+        if ([string]::IsNullOrWhiteSpace($FontName)) { return $false }
+    
+        # Check Fonts folder for matching files
+        $fontsDir = "$env:WINDIR\Fonts"
+        try {
+            $match = Get-ChildItem -Path $fontsDir -File -ErrorAction SilentlyContinue |
+                     Where-Object { $_.Name -like "*$FontName*" -or $_.Name -like "*Nerd Font*" } |
+                     Select-Object -First 1
+            if ($match) { return $true }
+        } catch {}
+    
+        # Check registry for installed font names
+        try {
+            $reg = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" -ErrorAction SilentlyContinue
+            if ($reg) {
+                foreach ($prop in $reg.PSObject.Properties) {
+                    if ($prop.Name -like "*$FontName*" -or $prop.Name -like "*Nerd Font*") {
+                        return $true
+                    }
+                }
+            }
+        } catch {}
+    
+        return $false
+    }
+    
+    function Install-NerdFont {
+        param([string]$FontName = "FiraCode")
+    
+        Write-Host "🔤 Installing Nerd Font ($FontName)..."
+    
+        if (Test-FontInstalled -FontName $FontName) {
+            Write-Host "✅ Font '$FontName' appears to be already installed. Skipping."
+            return
+        }
+    
+        $url = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/$FontName.zip"
+        $zipPath = "$env:TEMP\$FontName.zip"
+        $extractPath = "$env:TEMP\$FontName"
+    
+        Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+    
+        # Copy fonts into Windows Fonts (requires admin)
+        $fonts = Get-ChildItem -Path $extractPath -Recurse -Include *.ttf,*.otf
+        foreach ($font in $fonts) {
+            # skip if this specific font file already exists
+            $target = "$env:WINDIR\Fonts\$($font.Name)"
+            if (Test-Path $target) {
+                Write-Host "ℹ️ Font file already present, skipping: $($font.Name)"
+                continue
+            }
+    
+            Write-Host "📥 Installing font: $($font.Name)"
+            Copy-Item $font.FullName -Destination $target -Force
+            # Register font
+            $shellApp = New-Object -ComObject Shell.Application
+            $fontsFolder = $shellApp.Namespace(0x14)
+            $fontsFolder.CopyHere($font.FullName, 0x10)
+        }
+    
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "✅ Nerd Font installed: $FontName"
+    }
+    # ...existing code...
     Write-Host "3. Install Nerd Font"
     Write-Host "4. Uninstall Nerd Font"
     Write-Host "5. Customize Windows Terminal"
